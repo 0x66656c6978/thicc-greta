@@ -2,6 +2,8 @@ package indexer
 
 import (
 	"log"
+	"os"
+	"os/signal"
 	"time"
 )
 
@@ -21,7 +23,8 @@ func setLeague(newLeague string) {
 }
 
 // Run the indexer
-func Run(league string, offersChannel chan Offer) {
+func Run(theLeague string, offersChannel chan Offer) {
+	setLeague(theLeague)
 	appLogger.SetPrefix("indexer: ")
 	appLogger.SetOutput(log.Writer())
 	recentChangeID, errRecentChangeID := getRecentChangeID()
@@ -31,18 +34,32 @@ func Run(league string, offersChannel chan Offer) {
 	}
 	appLogger.Printf("Initial change id is \"%v\"", recentChangeID)
 	go func() {
+		interruptChannel := make(chan os.Signal)
+		signal.Notify(interruptChannel, os.Interrupt)
 		for {
 			for _, indexType := range indexTypes {
-				index, errRequestIndex := requestItemIndex(league, indexType)
+				index, errRequestIndex := requestItemIndex(theLeague, indexType)
 				if errRequestIndex != nil {
 					appLogger.Fatal(errRequestIndex)
 					break
 				}
 				itemIndex[indexType] = index
-				time.Sleep(300 * time.Millisecond)
+				select {
+				case <-interruptChannel:
+					return
+				case <-time.After(300 * time.Millisecond):
+					continue
+				}
 			}
 			appLogger.Printf("Updated item indices")
-			time.Sleep(5 * time.Minute)
+
+			select {
+			case <-interruptChannel:
+				return
+			case <-time.After(5 * time.Minute):
+				continue
+			}
+
 		}
 	}()
 	subscribeItems(recentChangeID, offersChannel)

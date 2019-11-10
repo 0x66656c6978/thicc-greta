@@ -17,6 +17,7 @@ func serveHTTP(addr string, hub *websocket.Hub) {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		websocket.Serve(hub, w, r)
 	})
+	httpServiceLogger.Printf("Listening on %v", addr)
 	err := http.ListenAndServe(addr, nil)
 	if err != nil {
 		httpServiceLogger.Fatal(err)
@@ -26,11 +27,14 @@ func serveHTTP(addr string, hub *websocket.Hub) {
 // receive offer messages from the offer channel, serialize them to json
 // and then broadcast them to connected websocket clients
 func broadcastOffers(hub *websocket.Hub, offerChannel chan indexer.Offer) {
-	jsonOffer, jsonErr := json.Marshal(<-offerChannel)
-	if jsonErr != nil {
-		panic(jsonErr)
+	for {
+		offer := <-offerChannel
+		jsonOffer, jsonErr := json.Marshal(offer)
+		if jsonErr != nil {
+			panic(jsonErr)
+		}
+		hub.Broadcast(jsonOffer)
 	}
-	hub.Broadcast(jsonOffer)
 }
 
 func main() {
